@@ -90,7 +90,7 @@ async function boot() {
   // works. Only the newest line is spoken: one that comes back after a newer one is dropped.
   // When Claude is done, Claude's whole answer follows her line (unless "Read Claude's answers" is off).
   const SILENT_KINDS = new Set(['work']);
-  let speakReplies = config.speakReplies !== false;
+  let speakReplies = config.speakReplies === true;
   let speechSeq = 0;
   const showLine = panel.say.bind(panel);
   panel.say = (msg) => {
@@ -643,7 +643,7 @@ async function boot() {
 
   host.onConfig((cfg) => {
     voice.configure(cfg);
-    speakReplies = cfg.speakReplies !== false;
+    speakReplies = cfg.speakReplies === true;
     if (cfg.muted || cfg.speak === false) voice.speaking?.stop();
     jealousy.enabled = cfg.jealous !== false;
     jealousy.closePages = cfg.closePages !== false;

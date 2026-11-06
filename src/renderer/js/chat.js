@@ -243,6 +243,7 @@ export class Chat {
     this.open = false;
     this.turn = 0;     // id of the answer coming in, if any
     this.answer = '';
+    this.speech = { seq: 0, at: 0, queue: Promise.resolve() }; // her answer read aloud as it comes in
     this.apps = [];    // the apps open on this PC, as last listed: [{ name, label }]
     this.appsReady = Promise.resolve();
     this.onSetup = null; // (status) => void: she can't answer yet (app.js hands it to setup.js)
@@ -402,6 +403,7 @@ export class Chat {
     this.open = false;
     if (this.turn) this.host.chatStop(this.turn);
     this.turn = 0;
+    this.speakReset();
     this.host.focusOverlay(false);
     this.capri.nextMove = performance.now() + 30000;
     this.capri.nextGaze = performance.now() + 60000;
@@ -416,6 +418,7 @@ export class Chat {
     this.panel.setChatBusy(true);
     this.panel.setActions([]); // a close button she offered before goes with a new message
     this.panel.chatTurn({ quote: text, face: 'aside' });
+    this.speakReset();
     this.capri.pulse();
     this.onMessage?.();
     // what you asked for plainly happens right away (the music, the volume, an app you named): her
@@ -469,6 +472,7 @@ export class Chat {
     this.warm = true;
     this.remember({ role: 'assistant', content: answer });
     this.panel.stream(answer, { done: true });
+    this.speakUpTo(answer, true);
     this.panel.setFace(mood(answer));
     this.panel.setChatBusy(false);
     if (!this.agent) this.after(res.text, answer, asked, early, text);
@@ -1079,8 +1083,44 @@ export class Chat {
   onDelta(id, piece) {
     if (id !== this.turn) return;
     this.answer += piece;
-    this.panel.stream(clean(this.answer));
+    const shown = clean(this.answer);
+    this.panel.stream(shown);
+    this.speakUpTo(shown);
     this.voice.play('blip'); // her blips as the words come in
+  }
+
+  // Her answer read aloud while it comes in: each finished sentence goes to her voice right away
+  // (made side by side, played in order), so she starts talking long before the answer is done.
+  speakReset() {
+    this.speech.seq++;
+    this.speech.at = 0;
+    this.speech.queue = Promise.resolve();
+    this.voice.speaking?.stop();
+  }
+
+  speakUpTo(text, done = false) {
+    const s = this.speech;
+    if (text.length < s.at) { // rewritten shorter (a tag or reasoning cut out)
+      if (done) return;          // the finished answer: what's in it was already said
+      s.at = 0;
+    }
+    let end = text.length;
+    if (!done) {
+      const tag = text.indexOf('[[', s.at); // a tag still coming in is never read out
+      const open = (tag === -1 ? text : text.slice(0, tag)).slice(s.at);
+      end = -1;
+      for (const m of open.matchAll(/[.!?…。！？]+(?=\s)|\n/g)) end = s.at + m.index + m[0].length;
+      if (end === -1) return;
+    }
+    const part = text.slice(s.at, end);
+    s.at = end;
+    if (!part.trim()) return;
+    const seq = s.seq;
+    const bytes = this.host.speak(part).catch(() => null);
+    s.queue = s.queue.then(async () => {
+      const b = await bytes;
+      if (seq === s.seq && b) await this.voice.speech(b, { reply: true });
+    }).catch(() => {});
   }
 
   // Her language, in it, for right by the message (above).

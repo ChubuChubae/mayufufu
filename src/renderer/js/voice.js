@@ -109,9 +109,15 @@ export class Voice {
       src.buffer = buf;
       src.reply = reply;
       src.connect(this.master);
-      src.onended = () => { if (this.speaking === src) this.speaking = null; };
+      const ended = new Promise((resolve) => {
+        src.onended = () => {
+          if (this.speaking === src) this.speaking = null;
+          resolve();
+        };
+      });
       this.speaking = src;
       src.start();
+      return ended; // resolves when she's done saying it (or it got cut off)
     } catch (err) {
       console.warn('[capri] could not play speech', err);
     }

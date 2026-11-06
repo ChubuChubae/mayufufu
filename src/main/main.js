@@ -366,7 +366,15 @@ function rebuildTray() {
       submenu: [
         { label: t.mute, type: 'checkbox', checked: cfg.muted, click: (item) => updateConfig({ muted: item.checked }) },
         { label: t.speak || 'Speak out loud', type: 'checkbox', checked: cfg.speak !== false, click: (item) => updateConfig({ speak: item.checked }) },
-        { label: t.speakReplies || 'Read Claude’s answers', type: 'checkbox', enabled: cfg.speak !== false, checked: cfg.speakReplies !== false, click: (item) => updateConfig({ speakReplies: item.checked }) },
+        { label: t.speakReplies || 'Read Claude’s answers', type: 'checkbox', enabled: cfg.speak !== false, checked: cfg.speakReplies === true, click: (item) => updateConfig({ speakReplies: item.checked }) },
+        {
+          label: t.voiceEngine || 'Voice',
+          enabled: cfg.speak !== false,
+          submenu: [
+            { label: t.voiceEdge || 'Microsoft Edge (free)', type: 'radio', checked: cfg.ttsProvider !== 'elevenlabs', click: () => updateConfig({ ttsProvider: 'edge' }) },
+            { label: t.voiceEleven || 'ElevenLabs', type: 'radio', checked: cfg.ttsProvider === 'elevenlabs', click: () => pickElevenLabs() },
+          ],
+        },
         { type: 'separator' },
         {
           label: t.soundsDir,
@@ -689,6 +697,26 @@ function llmConfig(cfg = config.load()) {
   return { ...cfg, apiKeys: setup.openKeys(cfg.apiKeys) };
 }
 
+// Her voice through ElevenLabs: it needs a key and a voice id; what's missing is said, and she keeps
+// her free voice until they're there (tts.js falls back to it anyway when ElevenLabs says no).
+function pickElevenLabs() {
+  const cfg = config.load(true); // a key or voice id just added by hand
+  const key = setup.openKeys(cfg.apiKeys).elevenlabs || process.env.ELEVENLABS_API_KEY;
+  const missing = [!key && 'an API key: the ELEVENLABS_API_KEY environment variable, or "apiKeys": { "elevenlabs": "..." }', !cfg.elevenVoice && 'a voice id: "elevenVoice": "..."'].filter(Boolean);
+  if (missing.length) {
+    rebuildTray(); // the radio goes back to the voice she still uses
+    dialog.showMessageBox({
+      type: 'info',
+      title: 'ElevenLabs',
+      message: 'ElevenLabs needs a little more first',
+      detail: `Missing:\n• ${missing.join('\n• ')}\n\nSet it in ${config.file()}, then pick ElevenLabs again.`,
+      buttons: ['Open config.json', 'OK'],
+    }).then(({ response }) => response === 0 && shell.openPath(config.file()));
+    return;
+  }
+  updateConfig({ ttsProvider: 'elevenlabs' });
+}
+
 async function pickClaudeFolder() {
   const { canceled, filePaths } = await dialog.showOpenDialog({ properties: ['openDirectory'], defaultPath: config.load().claudeCwd || app.getPath('home') });
   if (canceled || !filePaths[0]) return;
@@ -756,7 +784,9 @@ function registerIpc() {
   ipcMain.handle('tts:speak', async (_e, text) => {
     const cfg = config.load();
     if (cfg.speak === false || cfg.muted) return null;
-    const bytes = await tts.speak(text, { voice: cfg.speakVoice || tts.DEFAULT_VOICE });
+    const key = setup.openKeys(cfg.apiKeys).elevenlabs || process.env.ELEVENLABS_API_KEY;
+    const eleven = cfg.ttsProvider === 'elevenlabs' ? { key, voice: cfg.elevenVoice, model: cfg.elevenModel || undefined } : null;
+    const bytes = await tts.speak(text, { voice: cfg.speakVoice || tts.DEFAULT_VOICE, eleven });
     return bytes ? bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) : null;
   });
   // talking to her (chat.js): is Ollama there, with a model to talk with
