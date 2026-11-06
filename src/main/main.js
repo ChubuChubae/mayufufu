@@ -376,11 +376,16 @@ function rebuildTray() {
             { label: t.voiceChatterbox || 'Chatterbox Turbo (on your PC)', type: 'radio', checked: cfg.ttsProvider === 'chatterbox', click: () => pickChatterbox() },
             { type: 'separator' },
             {
-              label: cfg.chatterboxVoice ? `${t.chatterboxClip || 'Chatterbox voice clip'}: ${path.basename(cfg.chatterboxVoice)}` : `${t.chatterboxClip || 'Chatterbox voice clip'}: ${t.chatterboxDefault || 'built-in'}`,
+              label: `${t.chatterboxClip || 'Chatterbox voice'}: ${chatterboxVoiceName(cfg.chatterboxVoice)}`,
               enabled: cfg.ttsProvider === 'chatterbox',
               submenu: [
+                ...CHATTERBOX_VOICES.map((v) => ({
+                  label: v.label, type: 'radio', checked: (cfg.chatterboxVoice || null) === v.id || (!cfg.chatterboxVoice && !v.id),
+                  click: () => updateConfig({ chatterboxVoice: v.id }),
+                })),
+                ...(isCustomVoice(cfg.chatterboxVoice) ? [{ label: path.basename(cfg.chatterboxVoice), type: 'radio', checked: true }] : []),
+                { type: 'separator' },
                 { label: t.chatterboxPick || 'Choose a WAV clip…', click: () => pickChatterboxClip() },
-                { label: t.chatterboxDefault || 'Built-in voice', type: 'checkbox', checked: !cfg.chatterboxVoice, click: () => updateConfig({ chatterboxVoice: null }) },
               ],
             },
           ],
@@ -727,6 +732,22 @@ function pickElevenLabs() {
   updateConfig({ ttsProvider: 'elevenlabs' });
 }
 
+// Chatterbox's voices: its own built-in one, and clips that come with her (assets/voices, unpacked
+// from the asar so Chatterbox's Python can read them). chatterboxVoice holds an id from here, or the
+// path of a clip you picked yourself.
+const CHATTERBOX_VOICES = [
+  { id: null, label: 'Emma (built-in)' },
+  { id: 'maya', label: 'Maya (British)', file: 'maya_british.wav' },
+];
+const voiceFile = (file) => path.join(ROOT, 'assets', 'voices', file).replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
+const isCustomVoice = (v) => Boolean(v) && !CHATTERBOX_VOICES.some((x) => x.id === v);
+const chatterboxVoiceName = (v) => (isCustomVoice(v) ? path.basename(v) : CHATTERBOX_VOICES.find((x) => x.id === (v || null)).label);
+function chatterboxVoicePath(v) {
+  if (isCustomVoice(v)) return v;
+  const known = CHATTERBOX_VOICES.find((x) => x.id === v);
+  return known?.file ? voiceFile(known.file) : null;
+}
+
 // Her voice through Chatterbox Turbo on this PC: its own Python (a venv, chatterbox_server.py). Picked
 // before that's installed, she says how; picked with it, the model starts loading right away.
 function pickChatterbox() {
@@ -831,7 +852,7 @@ function registerIpc() {
     if (cfg.speak === false || cfg.muted) return null;
     const key = setup.openKeys(cfg.apiKeys).elevenlabs || process.env.ELEVENLABS_API_KEY;
     const eleven = cfg.ttsProvider === 'elevenlabs' ? { key, voice: cfg.elevenVoice, model: cfg.elevenModel || undefined } : null;
-    const cbox = cfg.ttsProvider === 'chatterbox' ? { voice: cfg.chatterboxVoice, python: cfg.chatterboxPython || undefined } : null;
+    const cbox = cfg.ttsProvider === 'chatterbox' ? { voice: chatterboxVoicePath(cfg.chatterboxVoice), python: cfg.chatterboxPython || undefined } : null;
     const bytes = await tts.speak(text, { voice: cfg.speakVoice || tts.DEFAULT_VOICE, eleven, cbox });
     return bytes ? bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) : null;
   });

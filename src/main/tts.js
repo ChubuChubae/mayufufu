@@ -105,9 +105,22 @@ function chatterboxStop() {
   Object.assign(cbox, { child: null, port: 0, python: null });
 }
 
+// One voice for the whole conversation: while the model loads, her lines wait for it (rather than
+// starting in edge-tts and changing voice halfway); a line it fails on is skipped, not read in another
+// voice. Only when Chatterbox can't run at all (not installed, crashed, never ready) does edge-tts speak.
+const READY_WAIT = 90000;
+const SKIP = Symbol('skip');
+
+async function waitReady(ms) {
+  const until = Date.now() + ms;
+  while (!cbox.port && cbox.child && Date.now() < until) await new Promise((r) => setTimeout(r, 250));
+  return Boolean(cbox.port);
+}
+
 async function chatterbox(line, { voice, python }) {
   chatterboxStart(python || CHATTERBOX_PYTHON);
-  if (!cbox.port) return null; // still loading: edge-tts this time
+  if (!cbox.child) return null;                 // can't run: edge-tts
+  if (!(await waitReady(READY_WAIT))) return null; // crashed or stuck loading: edge-tts
   try {
     const res = await fetch(`http://127.0.0.1:${cbox.port}/tts`, {
       method: 'POST',
@@ -117,12 +130,12 @@ async function chatterbox(line, { voice, python }) {
     });
     if (!res.ok) {
       console.warn(`[capri] chatterbox said ${res.status}:`, (await res.text().catch(() => '')).slice(0, 300));
-      return null;
+      return cbox.child ? SKIP : null;
     }
     return Buffer.from(await res.arrayBuffer());
   } catch (err) {
     console.warn('[capri] chatterbox failed:', err.message);
-    return null;
+    return cbox.child ? SKIP : null;
   }
 }
 
@@ -131,6 +144,7 @@ async function speak(text, { voice = DEFAULT_VOICE, python = 'python', eleven = 
   if (!line) return null;
   if (local) {
     const bytes = await chatterbox(line, local);
+    if (bytes === SKIP) return null; // said by no one rather than in another voice
     if (bytes) return bytes;
   }
   if (eleven?.key && eleven.voice) {
