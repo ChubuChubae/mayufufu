@@ -37,7 +37,7 @@ const TRAY = {
     motion: 'Animations', motionAuto: 'Like Windows', motionFull: 'Full', motionReduced: 'Reduced',
     display: 'Display', displayAuto: 'Normal', displayGl: 'OpenGL (if her background is black)', displaySoftware: 'Without the graphics card (if still black)',
     show: 'Bring her back', hide: 'Put her away',
-    size: 'Size', small: 'Small', medium: 'Medium', large: 'Large', sound: 'Sound', mute: 'Mute', speak: 'Speak out loud', speakReplies: 'Read Claude’s answers', voiceEngine: 'Voice', voiceEdge: 'Microsoft Edge (free)', voiceEleven: 'ElevenLabs',
+    size: 'Size', small: 'Small', medium: 'Medium', large: 'Large', sound: 'Sound', mute: 'Mute', speak: 'Speak out loud', speakReplies: 'Read Claude’s answers', voiceEngine: 'Voice', voiceEdge: 'Microsoft Edge (free)', voiceEleven: 'ElevenLabs', voiceChatterbox: 'Chatterbox Turbo (on your PC)', chatterboxClip: 'Chatterbox voice clip', chatterboxPick: 'Choose a WAV clip…', chatterboxDefault: 'Built-in voice',
     soundsDir: 'Open custom sounds folder', screen: 'Screen', wander: 'Wander around when idle',
     possess: 'Possess my windows', lang: 'Language', auto: 'Automatic (system)', startup: 'Start with Windows',
     sttLang: 'Language you speak to her in', sttUi: 'Same as hers', sttAuto: 'Detect automatically',

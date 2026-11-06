@@ -10,7 +10,9 @@ const DEFAULTS = {
   volume: 0.7,
   speak: true,       // she reads her lines aloud (tts.js, edge-tts)
   speakVoice: 'en-US-EmmaMultilingualNeural', // any edge-tts voice name
-  ttsProvider: 'edge', // 'edge' (free edge-tts) or 'elevenlabs' (key in apiKeys.elevenlabs or ELEVENLABS_API_KEY)
+  ttsProvider: 'edge', // 'edge' (free edge-tts), 'elevenlabs' (key in apiKeys.elevenlabs or ELEVENLABS_API_KEY) or 'chatterbox' (on your PC)
+  chatterboxVoice: null,  // a 10–15 s clip for Chatterbox to speak like (null: its built-in voice)
+  chatterboxPython: null, // null: %LOCALAPPDATA%\Capri\chatterbox\venv\Scripts\python.exe
   elevenVoice: null,   // the ElevenLabs voice id
   elevenModel: null,   // null: eleven_flash_v2_5 (fastest); 'eleven_multilingual_v2' sounds richer, costs double
   speakReplies: false, // when Claude is done, she reads Claude's whole answer aloud too

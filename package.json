@@ -54,6 +54,7 @@
     "asarUnpack": [
       "hooks/**",
       "src/main/windows.ps1",
+      "src/main/chatterbox_server.py",
       "node_modules/onnxruntime-node/**",
       "node_modules/onnxruntime-common/**",
       "node_modules/@huggingface/transformers/**",

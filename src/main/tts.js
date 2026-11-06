@@ -6,7 +6,7 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { execFile } = require('node:child_process');
+const { execFile, spawn } = require('node:child_process');
 const { randomUUID } = require('node:crypto');
 
 const DEFAULT_VOICE = 'en-US-EmmaMultilingualNeural'; // Emma, and she can read her other languages too
@@ -53,9 +53,86 @@ async function elevenlabs(line, { voice, key, model = ELEVEN_MODEL }) {
   }
 }
 
-async function speak(text, { voice = DEFAULT_VOICE, python = 'python', eleven = null } = {}) {
+// Chatterbox Turbo on your PC (chatterbox_server.py, its own Python in a venv): started the first time
+// it's asked for and kept loaded. Until the model is in (a minute or two, longer the very first time while
+// it downloads) her lines go to edge-tts, so she never goes quiet waiting for it.
+const CHATTERBOX_PYTHON = path.join(process.env.LOCALAPPDATA || os.homedir(), 'Capri', 'chatterbox', 'venv', 'Scripts', 'python.exe');
+const CHATTERBOX_SCRIPT = path.join(__dirname, 'chatterbox_server.py').replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
+const cbox = { child: null, port: 0, python: null };
+
+function chatterboxReady() {
+  return Boolean(cbox.port);
+}
+
+function chatterboxStart(python = CHATTERBOX_PYTHON) {
+  if (cbox.child && cbox.python === python) return;
+  chatterboxStop();
+  if (!fs.existsSync(python)) {
+    console.warn('[capri] chatterbox: no Python at', python);
+    return;
+  }
+  const child = spawn(python, ['-u', CHATTERBOX_SCRIPT], { windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
+  Object.assign(cbox, { child, port: 0, python });
+  let out = '';
+  child.stdout.on('data', (d) => {
+    out += d;
+    const m = /READY (\d+) (\w+)/.exec(out);
+    if (m && !cbox.port && cbox.child === child) {
+      cbox.port = Number(m[1]);
+      console.log(`[capri] chatterbox ready on ${m[2]}`);
+    }
+  });
+  child.stderr.on('data', (d) => {
+    const line = String(d).trim();
+    if (/error|exception|traceback/i.test(line)) console.warn('[capri] chatterbox:', line.slice(0, 300));
+  });
+  child.on('exit', (code) => {
+    if (cbox.child !== child) return;
+    console.warn('[capri] chatterbox stopped', code);
+    Object.assign(cbox, { child: null, port: 0, python: null });
+  });
+}
+
+// A venv's python.exe is only a launcher: the real Python is its child, holding the model on the GPU.
+// Killing the launcher alone leaves that one running, so the whole tree goes.
+function chatterboxStop() {
+  const pid = cbox.child?.pid;
+  if (pid && process.platform === 'win32') {
+    execFile('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true }, () => {});
+  } else {
+    cbox.child?.kill();
+  }
+  Object.assign(cbox, { child: null, port: 0, python: null });
+}
+
+async function chatterbox(line, { voice, python }) {
+  chatterboxStart(python || CHATTERBOX_PYTHON);
+  if (!cbox.port) return null; // still loading: edge-tts this time
+  try {
+    const res = await fetch(`http://127.0.0.1:${cbox.port}/tts`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text: line, voice: voice || null }),
+      signal: AbortSignal.timeout(120000),
+    });
+    if (!res.ok) {
+      console.warn(`[capri] chatterbox said ${res.status}:`, (await res.text().catch(() => '')).slice(0, 300));
+      return null;
+    }
+    return Buffer.from(await res.arrayBuffer());
+  } catch (err) {
+    console.warn('[capri] chatterbox failed:', err.message);
+    return null;
+  }
+}
+
+async function speak(text, { voice = DEFAULT_VOICE, python = 'python', eleven = null, cbox: local = null } = {}) {
   const line = clean(text);
   if (!line) return null;
+  if (local) {
+    const bytes = await chatterbox(line, local);
+    if (bytes) return bytes;
+  }
   if (eleven?.key && eleven.voice) {
     const bytes = await elevenlabs(line, eleven);
     if (bytes) return bytes;
@@ -83,4 +160,4 @@ function edge(line, { voice, python }) {
   });
 }
 
-module.exports = { speak, DEFAULT_VOICE };
+module.exports = { speak, DEFAULT_VOICE, CHATTERBOX_PYTHON, chatterboxStart, chatterboxStop, chatterboxReady };

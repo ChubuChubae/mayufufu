@@ -371,8 +371,18 @@ function rebuildTray() {
           label: t.voiceEngine || 'Voice',
           enabled: cfg.speak !== false,
           submenu: [
-            { label: t.voiceEdge || 'Microsoft Edge (free)', type: 'radio', checked: cfg.ttsProvider !== 'elevenlabs', click: () => updateConfig({ ttsProvider: 'edge' }) },
-            { label: t.voiceEleven || 'ElevenLabs', type: 'radio', checked: cfg.ttsProvider === 'elevenlabs', click: () => pickElevenLabs() },
+            { label: t.voiceEdge || 'Microsoft Edge (free)', type: 'radio', checked: !['elevenlabs', 'chatterbox'].includes(cfg.ttsProvider), click: () => { tts.chatterboxStop(); updateConfig({ ttsProvider: 'edge' }); } },
+            { label: t.voiceEleven || 'ElevenLabs', type: 'radio', checked: cfg.ttsProvider === 'elevenlabs', click: () => { tts.chatterboxStop(); pickElevenLabs(); } },
+            { label: t.voiceChatterbox || 'Chatterbox Turbo (on your PC)', type: 'radio', checked: cfg.ttsProvider === 'chatterbox', click: () => pickChatterbox() },
+            { type: 'separator' },
+            {
+              label: cfg.chatterboxVoice ? `${t.chatterboxClip || 'Chatterbox voice clip'}: ${path.basename(cfg.chatterboxVoice)}` : `${t.chatterboxClip || 'Chatterbox voice clip'}: ${t.chatterboxDefault || 'built-in'}`,
+              enabled: cfg.ttsProvider === 'chatterbox',
+              submenu: [
+                { label: t.chatterboxPick || 'Choose a WAV clip…', click: () => pickChatterboxClip() },
+                { label: t.chatterboxDefault || 'Built-in voice', type: 'checkbox', checked: !cfg.chatterboxVoice, click: () => updateConfig({ chatterboxVoice: null }) },
+              ],
+            },
           ],
         },
         { type: 'separator' },
@@ -717,6 +727,41 @@ function pickElevenLabs() {
   updateConfig({ ttsProvider: 'elevenlabs' });
 }
 
+// Her voice through Chatterbox Turbo on this PC: its own Python (a venv, chatterbox_server.py). Picked
+// before that's installed, she says how; picked with it, the model starts loading right away.
+function pickChatterbox() {
+  const python = config.load(true).chatterboxPython || tts.CHATTERBOX_PYTHON;
+  if (!fs.existsSync(python)) {
+    rebuildTray();
+    dialog.showMessageBox({
+      type: 'info',
+      title: 'Chatterbox',
+      message: 'Chatterbox isn’t installed yet',
+      detail: `She looks for its Python at:
+${python}
+
+Make it with:
+uv venv --python 3.11 venv
+uv pip install --python venv\Scripts\python.exe torch==2.6.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cu124
+uv pip install --python venv\Scripts\python.exe chatterbox-tts "setuptools<81"
+
+(or set "chatterboxPython" in config.json)`,
+    });
+    return;
+  }
+  tts.chatterboxStart(python);
+  updateConfig({ ttsProvider: 'chatterbox' });
+}
+
+async function pickChatterboxClip() {
+  const { canceled, filePaths } = await dialog.showOpenDialog({
+    title: 'A 10–15 second clip of the voice (one speaker, no music)',
+    properties: ['openFile'],
+    filters: [{ name: 'Audio', extensions: ['wav', 'mp3', 'flac'] }],
+  });
+  if (!canceled && filePaths[0]) updateConfig({ chatterboxVoice: filePaths[0] });
+}
+
 async function pickClaudeFolder() {
   const { canceled, filePaths } = await dialog.showOpenDialog({ properties: ['openDirectory'], defaultPath: config.load().claudeCwd || app.getPath('home') });
   if (canceled || !filePaths[0]) return;
@@ -786,7 +831,8 @@ function registerIpc() {
     if (cfg.speak === false || cfg.muted) return null;
     const key = setup.openKeys(cfg.apiKeys).elevenlabs || process.env.ELEVENLABS_API_KEY;
     const eleven = cfg.ttsProvider === 'elevenlabs' ? { key, voice: cfg.elevenVoice, model: cfg.elevenModel || undefined } : null;
-    const bytes = await tts.speak(text, { voice: cfg.speakVoice || tts.DEFAULT_VOICE, eleven });
+    const cbox = cfg.ttsProvider === 'chatterbox' ? { voice: cfg.chatterboxVoice, python: cfg.chatterboxPython || undefined } : null;
+    const bytes = await tts.speak(text, { voice: cfg.speakVoice || tts.DEFAULT_VOICE, eleven, cbox });
     return bytes ? bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) : null;
   });
   // talking to her (chat.js): is Ollama there, with a model to talk with
@@ -1111,6 +1157,7 @@ function main() {
     registerIpc();
     createOverlay();
     createTray();
+    if (config.load().ttsProvider === 'chatterbox') tts.chatterboxStart(config.load().chatterboxPython || undefined); // loading while she starts
     windowWatch = startWindowWatch({
       overlay,
       onUpdate: (data) => {
@@ -1150,6 +1197,7 @@ function main() {
   app.on('will-quit', () => {
     globalShortcut.unregisterAll();
     windowWatch?.stop();
+    tts.chatterboxStop();
   });
   app.on('window-all-closed', (e) => e.preventDefault());
 }
