@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Start-Process 'spotify:*)",
+      "PowerShell(Start-Process \"spotify:*)",
+      "PowerShell(& D:\\capri-desktop\\.claude\\spotify-keys.ps1 *)",
+      "PowerShell(& D:\\capri-desktop\\.claude\\speak.ps1 *)"
+    ]
+  }
+}
