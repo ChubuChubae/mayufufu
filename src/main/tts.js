@@ -105,11 +105,11 @@ function chatterboxStop() {
   Object.assign(cbox, { child: null, port: 0, python: null });
 }
 
-// One voice for the whole conversation: while the model loads, her lines wait for it (rather than
-// starting in edge-tts and changing voice halfway); a line it fails on is skipped, not read in another
-// voice. Only when Chatterbox can't run at all (not installed, crashed, never ready) does edge-tts speak.
+// While the model loads, her lines wait for it (rather than starting in edge-tts and changing voice
+// halfway). But she never goes quiet: a line Chatterbox can't make (not installed, crashed, never
+// ready, an error, too slow) is read by edge-tts instead.
 const READY_WAIT = 90000;
-const SKIP = Symbol('skip');
+const LINE_TIMEOUT = 60000; // one line at a time (chat.js), so this is for that line alone
 
 async function waitReady(ms) {
   const until = Date.now() + ms;
@@ -126,16 +126,16 @@ async function chatterbox(line, { voice, python }) {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ text: line, voice: voice || null }),
-      signal: AbortSignal.timeout(120000),
+      signal: AbortSignal.timeout(LINE_TIMEOUT),
     });
     if (!res.ok) {
       console.warn(`[capri] chatterbox said ${res.status}:`, (await res.text().catch(() => '')).slice(0, 300));
-      return cbox.child ? SKIP : null;
+      return null;
     }
     return Buffer.from(await res.arrayBuffer());
   } catch (err) {
     console.warn('[capri] chatterbox failed:', err.message);
-    return cbox.child ? SKIP : null;
+    return null;
   }
 }
 
@@ -144,8 +144,8 @@ async function speak(text, { voice = DEFAULT_VOICE, python = 'python', eleven = 
   if (!line) return null;
   if (local) {
     const bytes = await chatterbox(line, local);
-    if (bytes === SKIP) return null; // said by no one rather than in another voice
     if (bytes) return bytes;
+    console.warn('[capri] chatterbox had no voice for that line: edge-tts reads it');
   }
   if (eleven?.key && eleven.voice) {
     const bytes = await elevenlabs(line, eleven);

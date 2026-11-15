@@ -243,7 +243,7 @@ export class Chat {
     this.open = false;
     this.turn = 0;     // id of the answer coming in, if any
     this.answer = '';
-    this.speech = { seq: 0, at: 0, queue: Promise.resolve() }; // her answer read aloud as it comes in
+    this.speech = { seq: 0, at: 0, queue: Promise.resolve(), made: Promise.resolve() }; // her answer read aloud as it comes in
     this.apps = [];    // the apps open on this PC, as last listed: [{ name, label }]
     this.appsReady = Promise.resolve();
     this.onSetup = null; // (status) => void: she can't answer yet (app.js hands it to setup.js)
@@ -1089,12 +1089,14 @@ export class Chat {
     this.voice.play('blip'); // her blips as the words come in
   }
 
-  // Her answer read aloud while it comes in: each finished sentence goes to her voice right away
-  // (made side by side, played in order), so she starts talking long before the answer is done.
+  // Her answer read aloud while it comes in: each finished sentence goes to her voice as soon as the
+  // one before it is made (one at a time, so a long answer never piles up on her voice and times out;
+  // the next is made while the last plays), so she starts talking long before the answer is done.
   speakReset() {
     this.speech.seq++;
     this.speech.at = 0;
     this.speech.queue = Promise.resolve();
+    this.speech.made = Promise.resolve();
     this.voice.speaking?.stop();
   }
 
@@ -1116,7 +1118,8 @@ export class Chat {
     s.at = end;
     if (!part.trim()) return;
     const seq = s.seq;
-    const bytes = this.host.speak(part).catch(() => null);
+    const bytes = s.made.then(() => (seq === s.seq ? this.host.speak(part) : null)).catch(() => null);
+    s.made = bytes;
     s.queue = s.queue.then(async () => {
       const b = await bytes;
       if (seq === s.seq && b) await this.voice.speech(b, { reply: true });
