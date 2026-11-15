@@ -62,7 +62,8 @@ export class Brain {
   }
 
   say(kind, line, s, extra = {}) {
-    return this.panel.say({ kind, line, tag: s ? s.title || s.project : '', ...extra });
+    // what Claude Code is doing is shown, not read aloud (app.js): her voice is for her chat and her own lines
+    return this.panel.say({ kind, line, tag: s ? s.title || s.project : '', mute: kind !== 'idle', ...extra });
   }
 
   // today's log, for real events only: the demo's don't go on her report card

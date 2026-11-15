@@ -97,7 +97,7 @@ async function boot() {
     const shown = showLine(msg);
     // while she reads an answer, only something that matters (a permission, an error, a new answer) cuts in
     const reading = voice.speaking?.reply && !['alert', 'error', 'done'].includes(msg?.kind);
-    if (shown && msg?.line && !SILENT_KINDS.has(msg.kind) && !reading) {
+    if (shown && msg?.line && !msg.mute && !SILENT_KINDS.has(msg.kind) && !reading) {
       const reply = speakReplies && Boolean(msg.speech);
       const text = reply ? `${msg.line}\n\n${msg.speech}` : msg.line;
       const seq = ++speechSeq;
