@@ -40,6 +40,8 @@
           <div class="panel__actions" hidden></div>
           <form class="panel__chat" hidden autocomplete="off">
             <input class="panel__input" type="text" maxlength="500" spellcheck="false">
+            <input class="panel__file" type="file" accept="image/*" hidden>
+            <button class="panel__action panel__attach" type="button" title="Attach an image (or paste / drop one)" aria-label="Attach an image"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5l-7.8 7.8a5 5 0 0 1-7.1-7.1l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7l-8.5 8.5a1.7 1.7 0 0 1-2.4-2.4l7.8-7.8"/></svg><img class="panel__thumb" alt="" hidden></button>
             <button class="panel__action panel__mic" type="button" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7"/></svg></button>
             <button class="panel__action is-primary panel__send" type="submit"></button>
             <button class="panel__action panel__close" type="button">✕</button>

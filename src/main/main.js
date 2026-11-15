@@ -678,7 +678,22 @@ async function sayAboutSnap({ id, persona, prompt, history = [] }) {
   if (!chatModels?.length) await refreshModels();
   const model = pickModel(cfg);
   if (!model) return { ok: false, code: 'noai' };
-  if (cfg.provider === 'claude') return { ok: false, code: 'novision', model: 'Claude Code' };
+  // Claude Code: the picture goes as a file it reads (llm.js), with her persona and your message
+  if (cfg.provider === 'claude') {
+    const dir = path.join(os.tmpdir(), 'capri-images');
+    const imageFile = path.join(dir, `${id}.jpg`);
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(imageFile, Buffer.from(image, 'base64'));
+      const messages = [{ role: 'system', content: persona }, { role: 'user', content: prompt }];
+      const text = await llm.chat('claude', llmConfig(cfg), { model, messages, imageFile }, () => {}, AbortSignal.timeout(180000));
+      return { ok: true, text, model: 'Claude Code' };
+    } catch (err) {
+      return { ok: false, error: err.message, code: err.code || null, model: 'Claude Code' };
+    } finally {
+      fs.rm(imageFile, { force: true }, () => {});
+    }
+  }
   if (cfg.provider === 'ollama' && !(await ollama.canSee(model))) return { ok: false, code: 'novision', model };
   const user = cfg.provider === 'ollama'
     ? { role: 'user', content: prompt, images: [image] }
@@ -899,6 +914,16 @@ function registerIpc() {
     } catch (err) {
       return { ok: false, error: err.message };
     }
+  });
+  // a picture you attached in her chat (panel.js made it a JPEG): kept like a snap of the screen
+  ipcMain.handle('look:upload', (_e, image) => {
+    if (typeof image !== 'string' || !image || image.length > 20 * 1024 * 1024 || !/^[A-Za-z0-9+/=]+$/.test(image)) {
+      return { ok: false, error: 'not a picture' };
+    }
+    const id = randomUUID();
+    snaps.set(id, image);
+    setTimeout(() => snaps.delete(id), 120000);
+    return { ok: true, id };
   });
   ipcMain.handle('look:say', (_e, request) => sayAboutSnap(request || {}));
   // how hard the processor works, in %, since the last time she asked (pc.js)

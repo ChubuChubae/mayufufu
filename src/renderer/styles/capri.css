@@ -866,6 +866,44 @@ html[data-motion='reduced'] .panel__bar {
   .panel__chat .panel__mic.is-hearing { animation: none; }
 }
 
+/* a picture to show her (panel.js): a paperclip, the picture's thumbnail once one is attached */
+.panel__attach {
+  display: inline-grid;
+  place-items: center;
+  padding-inline: 9px;
+}
+
+.panel__attach[hidden] {
+  display: none;
+}
+
+.panel__attach svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+}
+
+.panel__attach.is-attached svg {
+  display: none;
+}
+
+.panel__thumb {
+  width: 22px;
+  height: 22px;
+  object-fit: cover;
+}
+
+.panel__thumb[hidden] {
+  display: none;
+}
+
+.panel__chat.is-dropping {
+  outline: 2px dashed var(--cyan);
+  outline-offset: 2px;
+}
+
 /* it's an AI, and it's not her voice from the show: said on every chat, plainly */
 .panel__note {
   margin: 9px 0 0;

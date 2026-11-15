@@ -340,8 +340,9 @@ export class Chat {
         noteTag: t.noteTag,
         note: status.local ? t.note : t.noteCloud,
         mic: t.mic,
+        attach: true, // a picture to show her (📎, paste or drop): any vision model, or Claude Code
       },
-      onSend: (text) => this.send(text),
+      onSend: (text, image) => this.send(text, image),
       onMic: () => this.listen(),
       onLeave: () => this.close(),
       hold: null,
@@ -409,15 +410,22 @@ export class Chat {
     this.capri.nextGaze = performance.now() + 60000;
   }
 
-  async send(text) {
+  async send(text, image = null) {
     if (this.turn || !this.open) return;
     const id = Date.now();
     this.turn = id;
     this.answer = '';
+    if (image && !text) text = 'What do you see in this picture?';
     this.history.push({ role: 'user', content: text });
     this.panel.setChatBusy(true);
     this.panel.setActions([]); // a close button she offered before goes with a new message
-    this.panel.chatTurn({ quote: text, face: 'aside' });
+    this.panel.chatTurn({ quote: image ? `📎 ${text}` : text, face: 'aside' });
+    if (image) {
+      this.speakReset();
+      this.capri.pulse();
+      this.onMessage?.();
+      return this.sendLook(text, id, image);
+    }
     this.speakReset();
     this.capri.pulse();
     this.onMessage?.();
@@ -481,7 +489,8 @@ export class Chat {
 
   // "Look at my screen" in her chat: she looks (asking you first, the first time) and answers here,
   // the conversation so far in mind.
-  async sendLook(text, id) {
+  // With `image` (base64 JPEG you attached): she looks at that picture instead, no asking first.
+  async sendLook(text, id, image = null) {
     const tl = this.brain.t.look;
     const say = (line, face = 'aside') => {
       if (this.turn !== id) return;
@@ -491,7 +500,7 @@ export class Chat {
       this.panel.setFace(face);
       this.panel.setChatBusy(false);
     };
-    if (!this.look.asked) {
+    if (!image && !this.look.asked) {
       const where = await this.host.lookWhere().catch(() => ({}));
       this.history.pop(); // your message comes back once you've said yes
       say(`${tl.ask} ${fmt(where.local ? tl.local : tl.online, { model: where.model || '…', service: where.provider || '' })}`, 'look');
@@ -507,14 +516,17 @@ export class Chat {
       });
       return;
     }
-    const snap = await this.host.lookSnap();
+    const snap = image ? await this.host.lookUpload(image) : await this.host.lookSnap();
     if (!snap.ok) return say(fmt(tl.failed, { error: snap.error }));
-    this.look.effect();
+    if (!image) this.look.effect();
+    const about = image
+      ? 'the picture is one the user just sent you in this chat.'
+      : 'the picture is the user\'s screen right now; a small figure with a big red mane on it is you.';
     const res = await this.host.lookSay({
       id: snap.id,
       persona: this.lookPersona(),
       history: this.history.slice(-REMEMBER, -1),
-      prompt: `${text}\n\n(Note for you, never repeat it: the picture is the user's screen right now; a small figure with a big red mane on it is you. Answer about what you really see, in character. ${this.languageNote()})`,
+      prompt: `${text}\n\n(Note for you, never repeat it: ${about} Answer about what you really see, in character. ${this.languageNote()})`,
     });
     if (!res.ok) {
       const model = String(res.model || '…').replace(/:latest$/, '');

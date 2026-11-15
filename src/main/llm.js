@@ -136,13 +136,18 @@ function claudeVersion() {
   });
 }
 
-function claudeChat(cfg, text, persona, onDelta, signal) {
+// imageFile: a picture you sent in her chat, saved to disk; Claude Code opens it with its Read tool
+function claudeChat(cfg, text, persona, onDelta, signal, imageFile = null) {
   // her persona, from a file: too long and too full of quotes and newlines for cmd's command line
   const personaFile = path.join(os.tmpdir(), 'capri-persona.txt');
   fs.writeFileSync(personaFile, persona);
   const args = ['-p', '--output-format', 'stream-json', '--verbose',
     '--permission-mode', CLAUDE_MODES.includes(cfg.claudeMode) ? cfg.claudeMode : 'default',
     '--append-system-prompt-file', quote(personaFile)];
+  if (imageFile) {
+    args.push('--add-dir', quote(path.dirname(imageFile)), '--allowedTools', 'Read');
+    text = `${text}\n\n[The user attached an image, saved at: ${imageFile}\nOpen it with your Read tool and look at it before you answer.]`;
+  }
   if (!claudeSession) claudeSession = randomUUID();
   args.push(claudeStarted ? '--resume' : '--session-id', claudeSession);
   return new Promise((resolve, reject) => {
@@ -207,11 +212,11 @@ function restoreClaude(saved) {
 
 const isChatSession = (id) => Boolean(id) && id === claudeSession;
 
-async function chat(id, cfg, { model, messages }, onDelta, signal) {
+async function chat(id, cfg, { model, messages, imageFile }, onDelta, signal) {
   const p = endpoint(id, cfg);
   if (p.kind === 'ollama') return ollama.chat({ model, messages }, onDelta, signal);
   // Claude Code keeps its own memory of the conversation: only her persona and your last message go
-  if (p.kind === 'claude') return claudeChat(cfg, messages.at(-1).content, messages[0].content, onDelta, signal);
+  if (p.kind === 'claude') return claudeChat(cfg, messages.at(-1).content, messages[0].content, onDelta, signal, imageFile);
   return openaiChat(p, { model, messages }, onDelta, signal);
 }
 

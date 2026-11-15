@@ -44,6 +44,7 @@ contextBridge.exposeInMainWorld('host', {
   onSttProgress: on('stt:progress'),
   speak: (text) => ipcRenderer.invoke('tts:speak', String(text || '')),
   lookSnap: () => ipcRenderer.invoke('look:snap'),
+  lookUpload: (image) => ipcRenderer.invoke('look:upload', image),
   lookSay: (request) => ipcRenderer.invoke('look:say', request),
   lookWhere: () => ipcRenderer.invoke('look:where'),
   cpu: () => ipcRenderer.invoke('pc:cpu'),

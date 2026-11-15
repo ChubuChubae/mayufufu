@@ -64,6 +64,37 @@ export class Panel {
     this.chatSend = panel.querySelector('.panel__send');
     this.chatClose = panel.querySelector('.panel__close');
     this.chatMic = panel.querySelector('.panel__mic');
+    this.chatAttach = panel.querySelector('.panel__attach');
+    this.chatFile = panel.querySelector('.panel__file');
+    this.chatThumb = panel.querySelector('.panel__thumb');
+    this.attached = null; // a picture to show her with your next message: base64 JPEG
+    this.chatAttach.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (this.attached) return this.attach(null); // a second click takes it back
+      if (!this.chatAttach.disabled) this.chatFile.click();
+    });
+    this.chatFile.addEventListener('change', () => {
+      const file = this.chatFile.files?.[0];
+      this.chatFile.value = '';
+      if (file) this.attachFile(file);
+    });
+    this.chatInput.addEventListener('paste', (e) => {
+      const file = [...(e.clipboardData?.files || [])].find((f) => f.type.startsWith('image/'));
+      if (!file) return;
+      e.preventDefault();
+      this.attachFile(file);
+    });
+    this.chatForm.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      this.chatForm.classList.add('is-dropping');
+    });
+    this.chatForm.addEventListener('dragleave', () => this.chatForm.classList.remove('is-dropping'));
+    this.chatForm.addEventListener('drop', (e) => {
+      e.preventDefault();
+      this.chatForm.classList.remove('is-dropping');
+      const file = [...(e.dataTransfer?.files || [])].find((f) => f.type.startsWith('image/'));
+      if (file) this.attachFile(file);
+    });
     this.note = panel.querySelector('.panel__note');
     this.chatMic.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -73,9 +104,11 @@ export class Panel {
     this.chatForm.addEventListener('submit', (e) => {
       e.preventDefault();
       const text = this.chatInput.value.trim();
-      if (!text || this.chatInput.disabled) return;
+      const image = this.attached;
+      if ((!text && !image) || this.chatInput.disabled) return;
       this.chatInput.value = '';
-      this.current?.onSend?.(text);
+      this.attach(null);
+      this.current?.onSend?.(text, image);
     });
     this.chatInput.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') this.hide();
@@ -290,6 +323,9 @@ export class Panel {
     this.chatInput.setAttribute('aria-label', chat.placeholder);
     this.chatInput.disabled = false;
     this.chatSend.disabled = false;
+    this.chatAttach.disabled = false;
+    this.chatAttach.hidden = !chat.attach || Boolean(chat.secret); // only her own chat takes pictures
+    this.attach(null);
     this.chatSend.textContent = chat.send;
     this.chatClose.setAttribute('aria-label', chat.close);
     // talking out loud (chat.js, listen.js): a mic by the line, when the chat takes it
@@ -377,11 +413,41 @@ export class Panel {
     this.line.classList.add('is-glitching');
   }
 
+  // A picture for your next message, made small enough for any vision model (a JPEG, 1280px at most).
+  async attachFile(file) {
+    if (!file.type.startsWith('image/') || file.size > 30 * 1024 * 1024) return;
+    try {
+      const img = await createImageBitmap(file); // no blob: URL, which her page's CSP doesn't allow
+      const fit = Math.min(1, 1280 / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(img.width * fit));
+      canvas.height = Math.max(1, Math.round(img.height * fit));
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#fff'; // transparent PNGs: on white, not black
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      img.close();
+      this.attach(canvas.toDataURL('image/jpeg', 0.85).split(',')[1]);
+    } catch {
+      this.attach(null);
+    }
+  }
+
+  attach(image) {
+    this.attached = image || null;
+    this.chatAttach.classList.toggle('is-attached', Boolean(this.attached));
+    this.chatThumb.hidden = !this.attached;
+    if (this.attached) this.chatThumb.src = `data:image/jpeg;base64,${this.attached}`;
+    else this.chatThumb.removeAttribute('src');
+    if (this.current?.chat) this.chatInput.focus();
+  }
+
   // While she answers you can't send another.
   setChatBusy(busy) {
     this.chatInput.disabled = busy;
     this.chatSend.disabled = busy;
     this.chatMic.disabled = busy;
+    this.chatAttach.disabled = busy;
     if (!busy && this.current?.chat) this.chatInput.focus();
   }
 
